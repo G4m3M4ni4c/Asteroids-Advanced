@@ -12,37 +12,66 @@ function Ship(world, params) {
   var respawnFramesReset = 300;
   var respawnFrames;
   this.mass = 1000;
-  this.rotForce = 10;
-  this.thrustForce = 200;
-  this.rotDrag = Entity.calculateDragCo(this.rotForce, 0.07);
-  this.velDrag = Entity.calculateDragCo(this.thrustForce, 20);
+  this.thrustPower = params.thrustPower !== undefined ? params.thrustPower : {
+    forward: 200,
+    backward: 100,
+    left: 180,
+    right: 180,
+    stabilization: 200,
+    rotation: 80
+  };
+  this.maxThrust = params.maxThrust !== undefined ? params.maxThrust : 100;
+  this.coefficients = {
+    velMu: 1 / this.thrustPower.stabilization,
+    rotMu: 0,
+    velDrag: Entity.calculateDragCo(this.maxThrust, 15),
+    rotDrag: 0
+  }
+  this.velMu = this.coefficients.velMu;
+  this.velDrag = this.coefficients.velDrag;
+  this.front = createVector(4 / 3 * this.r, 0);
   this.shape = new Shape([
     createVector(-2 / 3 * this.r, -this.r),
     createVector(-2 / 3 * this.r, this.r),
-    createVector(4 / 3 * this.r, 0)
+    this.front
   ]);
+  this.colors = [
+    color(243, 89 , 86 ),
+    color(241, 197, 0  ),
+    color(73 , 187, 108),
+    color(36 , 148, 193),
+    color(150, 89 , 167)
+  ]
+  this.colorIndex = 0;
 
   var fireColors = [];
   for (var i = 0; i * 10 <= 255; i++) {
     fireColors[i] = "rgb(255," + i * 10 + ",0)";
   }
 
-  var rateOfFire = 20;
+  var stabToggle = true;
+  var rateOfFire = 40;
   var lastShot = 0;
   var scope = this;
 
   var inputs = {
-    thrust: false,
-    rotateleft: false,
-    rotateright: false,
+    targetPoint: createVector(1, 0),
+    thrustVector: createVector(0, 0),
     laser: false
   };
 
-  this.setInputs = function(thrust, rotateleft, rotateright, laser) {
-    inputs.thrust = thrust;
-    inputs.rotateleft = rotateleft;
-    inputs.rotateright = rotateright;
+  this.setInputs = function(targetPoint, thrustForward, thrustBackwards, thrustLeft, thrustRight, stabilizationToggle, laser) {
+    var upRight = p5.Vector.dot(p5.Vector.fromAngle(this.heading), createVector(0, -1));
+    inputs.thrustVector = createVector(
+      (thrustForward ? this.thrustPower.forward : 0) + (thrustBackwards ? -this.thrustPower.backward : 0),
+      (upRight > -0.259 ? 1 : -1) * ((thrustRight ? this.thrustPower.right : 0) + (thrustLeft ? -this.thrustPower.left : 0))
+    );
+    inputs.targetPoint = targetPoint;
     inputs.laser = laser;
+
+    if (stabilizationToggle) {
+      stabToggle = !stabToggle;
+    }
   }
 
   this.registerId = function(id) {
@@ -71,7 +100,6 @@ function Ship(world, params) {
   this.collision = function(entity) {
     if (entity.toString(entity) === "[object Asteroid]") {
       this.lives--;
-      // TODO: Do something with this variable.
       if (this.lives === 0 && this.owner !== -1) {
         world.getPlayer(this.owner).dead = true;
       }
@@ -89,52 +117,63 @@ function Ship(world, params) {
   this.update = function() {
 
     if (this.canCollide) {
-      this.applyTorque((inputs.rotateleft ? -this.rotForce : 0) + (inputs.rotateright ? this.rotForce : 0));
-      var thrust = p5.Vector.fromAngle(this.heading);
-      thrust.mult(inputs.thrust ? this.thrustForce : 0)
-      this.applyForce(thrust);
+      var force = p5.Vector.sub(inputs.targetPoint.copy(), this.front.copy().rotate(this.heading));
+      force.normalize();
+      force.mult(this.thrustPower.rotation);
+      this.applyTorque(Entity.calculateMoment(inputs.targetPoint, force));
+      var sinTheta = cross(p5.Vector.fromAngle(this.heading), force) / force.mag();
+      if (abs(sin(this.predictRotation())) > abs(sinTheta)) {
+        this.torque = 0;
+        this.rotation = 0;
+        this.heading += asin(sinTheta);
+      }
+
+      this.applyForce(inputs.thrustVector.rotate(this.heading));
 
       if (lastShot > 0) {
         lastShot--;
       } else if (inputs.laser) {
+        var temp = this.colors[0];
         world.addEndFrameTask(function(world) {
           world.createEntity(Laser, {
-            pos: p5.Vector.fromAngle(scope.heading).mult(scope.r).add(scope.pos),
+            pos: scope.front.copy().add(createVector(20, 0)).rotate(scope.heading).add(scope.pos),
             heading: scope.heading,
+            c: scope.colors[scope.colorIndex],
+            initialVel: scope.vel,
             owner: scope.owner
           });
+          scope.colorIndex++;
+          scope.colorIndex %= scope.colors.length;
         });
         lastShot = rateOfFire;
       }
 
+      this.velMu = stabToggle && (inputs.thrustVector.x === 0 && inputs.thrustVector.y === 0) ? this.coefficients.velMu : 0;
       if (Entity.prototype.update.call(this)) {
         return true;
       }
 
-      this.vel.mult(0.99);
       if (this.shields > 0) {
         this.shields--;
       }
-
     }
   }
 
   this.render = function() {
+    push();
+    translate(this.pos.x, this.pos.y);
+    rotate(this.heading);
+    colorMode(RGB);
+    fill(this.colors[this.colorIndex]);
+    strokeWeight(3);
     if (!this.canCollide) {
-      push();
+      strokeCap(ROUND);
       stroke(255, 255, 255, this.shape.fade());
-      translate(this.pos.x, this.pos.y);
-      rotate(this.heading);
       if (!this.shape.draw()) {
         this.reset();
         if (this.lives === 0) this.dead = true;
       }
-      pop();
     } else {
-      push();
-      translate(this.pos.x, this.pos.y);
-      rotate(this.heading);
-      noFill();
       var shieldCol = random(map(this.shields, 0, shieldDuration, 255, 0), 255);
       stroke(shieldCol, shieldCol, 255);
       this.shape.draw();
@@ -144,8 +183,8 @@ function Ship(world, params) {
         stroke(fireColors[floor(random(fireColors.length))]);
         line(0, 0, 0, 10);
       }
-      pop();
     }
+    pop();
   }
 
   this.reset = function() {
