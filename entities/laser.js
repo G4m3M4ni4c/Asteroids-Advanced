@@ -7,8 +7,8 @@ function Laser(world, params) {
   params.r = params.r !== undefined ? params.r : 4;
   Entity.call(this, params);
 
-  this.vel = p5.Vector.fromAngle(params.heading).mult(2400);
-  this.vel.add(params.initialVel);
+  this.velocity = p5.Vector.fromAngle(params.heading).mult(2400);
+  this.velocity.add(params.initialVel);
   this.c = params.c ? params.c : color(255);
   this.duration = params.duration !== undefined ? params.duration : 20;
   var maxDuration = this.duration;
@@ -22,27 +22,27 @@ function Laser(world, params) {
 
   this.render = function() {
     push();
-    translate(this.pos.x, this.pos.y);
+    translate(this.position.x, this.position.y);
     colorMode(RGB);
     stroke(red(this.c), green(this.c), blue(this.c), 55 + 200 * this.duration / maxDuration);
     strokeWeight(this.r);
     strokeCap(SQUARE);
-    var halfLine = this.vel.copy().mult(0.5 * world.dt);
+    var halfLine = this.velocity.copy().mult(0.5 * world.pdt);
     line(-halfLine.x, -halfLine.y, halfLine.x, halfLine.y);
     pop();
   }
 
 
   this.collides = function(entity) {
-    var tail = p5.Vector.sub(this.pos, this.vel.copy().mult(world.dt));
+    var tail = p5.Vector.sub(this.position, this.velocity.copy().mult(world.pdt));
     if (entity.toString() !== "[object Asteroid]"
-      || !(Entity.prototype.collides.call(this, entity) || lineIntersectCircle(this.pos, tail, entity.pos, entity.r))) {
+      || !(Entity.prototype.collides.call(this, entity) || lineIntersectCircle(this.position, tail, entity.position, entity.r))) {
       return false;
     }
     var verts = entity.shape.vertices;
-    var localPos = p5.Vector.sub(this.pos, entity.pos).rotate(-entity.heading);
+    var localPos = p5.Vector.sub(this.position, entity.position).rotate(-entity.heading);
     if (Shape.contains(verts, localPos)) return true;
-    var localTail = p5.Vector.sub(tail, entity.pos).rotate(-entity.heading);
+    var localTail = p5.Vector.sub(tail, entity.position).rotate(-entity.heading);
     for (var i = 0, j = entity.total - 1; i < entity.total; j = i++)
       if (lineIntersect(verts[i], verts[j], localPos, localTail)) return true;
     return false;

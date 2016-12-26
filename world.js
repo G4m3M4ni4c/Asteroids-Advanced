@@ -3,8 +3,9 @@ function World(width, height, viewSize) {
   this.height = height;
   this.halfwidth = width / 2;
   this.halfheight = height / 2;
-  this.time = millis();
-  this.seed = this.time;
+  this.millis = millis();
+  this.seed = this.millis;
+  this.pdt = 0;
   this.dt = 0;
 
 
@@ -69,9 +70,10 @@ function World(width, height, viewSize) {
 
   // Does all the update logic for this frame.
   this.update = function() {
-    var currentTime = millis();
-    this.dt = (currentTime - this.time) / 1000;
-    this.time = currentTime;
+    var currentMillis = millis();
+    this.pdt = dt;
+    this.dt = (currentMillis - this.millis) / 1000;
+    this.millis = currentMillis;
     entitymanager.update();
     entitymanager.checkCollisions();
     levelmanager.update(players);

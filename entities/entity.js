@@ -1,19 +1,9 @@
 function Entity(params) {
+  Physics.call(this, params);
   this.id = -1;
   this.canCollide = true;
   this.dead = false;
-  this.mass = params.mass !== undefined ? params.mass : 1;
-  this.heading = 0;
-  this.pos = params.pos !== undefined ? params.pos : createVector(0, 0);
   this.r = params.r !== undefined ? params.r : 1;
-  this.rotation = 0;
-  this.vel = createVector(0, 0);
-  this.force = createVector(0, 0);
-  this.torque = 0;
-  this.velMu = 0;
-  this.rotMu = 0;
-  this.velDrag = 0;
-  this.rotDrag = 0;
   this.owner = params.owner !== undefined ? params.owner : -1;
 }
 
@@ -40,45 +30,6 @@ Entity.prototype.edges = function() {
   else if (relPos.x - world.width  + this.r > -halfWinWid) this.pos.x -= world.width;
   if      (relPos.y + world.height - this.r <  halfWinHig) this.pos.y += world.height;
   else if (relPos.y - world.height + this.r > -halfWinHig) this.pos.y -= world.height;
-}
-
-Entity.prototype.applyForce = function(force) {
-  this.force.add(force);
-}
-
-Entity.prototype.applyTorque = function(torque) {
-  this.torque += torque;
-}
-
-Entity.prototype.predictVelocity = function() {
-  var accel = this.force.copy().div(this.mass).mult(world.dt);
-  return this.vel.copy().add(accel);
-}
-
-Entity.prototype.predictRotation = function() {
-  var rotAccel = this.torque / this.mass * world.dt;
-  return this.rotation + rotAccel;
-}
-
-Entity.prototype.momentum = function() {
-  var momentum = this.vel.copy();
-  momentum.mult(this.mass);
-  return momentum;
-}
-
-const g = 9.81;
-
-Entity.prototype.calculateMu = function(breakThrough) {
-  var R = this.mass * g;
-  return breakThrough / R;
-}
-
-Entity.calculateDragCo = function(maxForce, maxVel) {
-  return maxForce / (maxVel * maxVel);
-}
-
-Entity.calculateMoment = function(localPoint, force) {
-  return cross(localPoint, force) / localPoint.mag();
 }
 
 Entity.prototype.globalPoint = function(localPoint) {
@@ -114,63 +65,9 @@ Entity.prototype.update = function() {
     return true;
   }
 
-  var R = this.mass * g;
-  if (this.velMu > 0) {
-    var F = this.velMu * R;
-    if (this.vel.magSq() > 0) {
-      var normVel = this.vel.copy().normalize();
-      var frict = normVel.copy().mult(-F);
-      this.applyForce(frict);
-      if (p5.Vector.dot(this.vel, this.predictVelocity()) < 0) {
-        frict.mult(-1);
-        var force = normVel;
-        force.mult(-p5.Vector.dot(normVel, this.force.copy()));
-        this.applyForce(frict);
-        this.applyForce(force);
-        this.vel.mult(0);
-      }
-    } else if (this.force.magSq() > F * F) {
-      this.applyForce(this.force.copy().normalize().mult(-F));
-    } else {
-      this.force.mult(0);
-    }
-  }
-
-  if (this.rotMu > 0) {
-    var F = this.rotMu * R;
-    if (this.rotation != 0) {
-      this.applyTorque(-F * (this.rotation > 0 ? 1 : -1));
-      if ((this.rotation > 0) != (this.predictRotation() > 0)) {
-        this.torque = 0;
-        this.rotation = 0;
-      }
-    } else if (abs(this.torque) > F) {
-      this.applyTorque(-F * (this.torque > 0 ? 1 : -1));
-    } else {
-      this.torque = 0;
-    }
-  }
-
-  if (this.velDrag != 0) {
-    this.applyForce(this.vel.copy().mult(-this.velDrag * this.vel.mag()));
-  }
-
-  if (this.rotDrag > 0) {
-    var drag = this.rotDrag * this.rotation * this.rotation;
-    this.applyTorque(this.rotation > 0 ? -drag : drag);
-  }
-
-  // Acceleration
-  if (this.force.x != 0 || this.force.y != 0) this.vel.add(this.force.div(this.mass).mult(world.dt));
-  // Rotational Acceleration
-  if (this.torque != 0) this.rotation += this.torque / this.mass * world.dt;
-
-  this.pos.add(this.vel.copy().mult(world.dt));
-  this.heading += this.rotation * world.dt;
+  Physics.prototype.update.call(this);
 
   this.edges();
-  if (this.force.x != 0 || this.force.y != 0) this.force.mult(0);
-  this.torque = 0;
 }
 
 Entity.prototype.render = function() {
@@ -182,3 +79,5 @@ Entity.prototype.render = function() {
   ellipse(this.pos.x, this.pos.y, this.r);
   pop();
 }
+
+Entity.prototype = Object.create(Physics.prototype);

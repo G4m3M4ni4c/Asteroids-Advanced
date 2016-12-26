@@ -16,19 +16,16 @@ function Ship(world, params) {
   this.thrustPower = params.thrustPower !== undefined ? params.thrustPower : {
     forward: maxThrust,
     backward: maxThrust * 0.5,
-    left: maxThrust * 0.9,
-    right: maxThrust * 0.9,
+    strafe: maxThrust * 0.9,
     stabilization: maxThrust,
     rotation: maxThrust * 0.4
   };
   this.coefficients = {
-    velMu: this.calculateMu(this.thrustPower.stabilization),
-    rotMu: 0,
-    velDrag: Entity.calculateDragCo(maxThrust, 1000),
-    rotDrag: 0
+    mu: createVector(this.calculateMu(this.thrustPower.stabilization), 0),
+    drag: createVector(Physics.calculateDrag(maxThrust, 1000), 0)
   }
-  this.velMu = this.coefficients.velMu;
-  this.velDrag = this.coefficients.velDrag;
+  this.mu = this.coefficients.mu;
+  this.drag = this.coefficients.drag;
   this.front = createVector(4 / 3 * this.r, 0);
   this.shape = new Shape([
     createVector(-2 / 3 * this.r, -this.r),
@@ -64,7 +61,7 @@ function Ship(world, params) {
     var upRight = p5.Vector.dot(p5.Vector.fromAngle(this.heading), createVector(0, -1));
     inputs.thrustVector = createVector(
       (thrustForward ? this.thrustPower.forward : 0) + (thrustBackwards ? -this.thrustPower.backward : 0),
-      (upRight > -0.259 ? 1 : -1) * ((thrustRight ? this.thrustPower.right : 0) + (thrustLeft ? -this.thrustPower.left : 0))
+      (upRight > -0.259 ? 1 : -1) * ((thrustRight ? this.thrustPower.strafe : 0) + (thrustLeft ? -this.thrustPower.strafe : 0))
     );
     inputs.targetPoint = targetPoint;
     inputs.laser = laser;
@@ -118,18 +115,20 @@ function Ship(world, params) {
   this.update = function() {
 
     if (this.canCollide) {
-      var force = p5.Vector.sub(inputs.targetPoint.copy(), this.front.copy().rotate(this.heading));
-      force.normalize();
-      force.mult(this.thrustPower.rotation);
-      this.applyTorque(Entity.calculateMoment(inputs.targetPoint, force));
-      var sinTheta = cross(p5.Vector.fromAngle(this.heading), force) / force.mag();
-      if (abs(sin(this.predictRotation())) > abs(sinTheta)) {
-        this.torque = 0;
+      var force = new Force();
+      var vector = p5.Vector.sub(inputs.targetPoint.copy(), this.front.copy().rotate(this.heading));
+      vector.normalize();
+      vector.mult(this.thrustPower.rotation);
+      force.torque += Force.getTorque(inputs.targetPoint, vector);
+      var theta = asin(cross(p5.Vector.fromAngle(this.heading), vector) / vector.mag());
+      if (abs(this.predictRotation()) > abs(theta)) {
+        this.force.torque = 0;
         this.rotation = 0;
         this.heading += asin(sinTheta);
       }
+      force.vector += inputs.thrustVector.rotate(this.heading);
+      this.applyForce(force);
 
-      this.applyForce(inputs.thrustVector.rotate(this.heading));
 
       if (lastShot > 0) {
         lastShot--;
@@ -137,10 +136,10 @@ function Ship(world, params) {
         var temp = this.colors[0];
         world.addEndFrameTask(function(world) {
           world.createEntity(Laser, {
-            pos: scope.front.copy().add(createVector(20, 0)).rotate(scope.heading).add(scope.pos),
+            position: scope.front.copy().add(createVector(20, 0)).rotate(scope.heading).add(scope.position),
             heading: scope.heading,
             c: scope.colors[scope.colorIndex],
-            initialVel: scope.vel,
+            initialVel: scope.velocity,
             owner: scope.owner
           });
           scope.colorIndex++;
@@ -149,7 +148,7 @@ function Ship(world, params) {
         lastShot = rateOfFire;
       }
 
-      this.velMu = stabToggle && (inputs.thrustVector.x === 0 && inputs.thrustVector.y === 0) ? this.coefficients.velMu : 0;
+      this.mu = stabToggle && (inputs.thrustVector.x === 0 && inputs.thrustVector.y === 0) ? this.coefficients.mu : createVector(0, 0);
       if (Entity.prototype.update.call(this)) {
         return true;
       }
@@ -162,7 +161,7 @@ function Ship(world, params) {
 
   this.render = function() {
     push();
-    translate(this.pos.x, this.pos.y);
+    translate(this.position.x, this.position.y);
     rotate(this.heading);
     colorMode(RGB);
     noFill();
@@ -191,8 +190,8 @@ function Ship(world, params) {
   this.reset = function() {
     this.canCollide = true;
     this.regenShields();
-    this.pos.set(resetPos.x, resetPos.y);
-    this.vel.set(0, 0);
+    this.position.set(resetPos.x, resetPos.y);
+    this.velocity.set(0, 0);
     this.lastShot = 0;
   }
 
